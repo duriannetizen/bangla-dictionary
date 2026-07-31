@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db"; // Adjust the import path if necessary
+import { db } from "@/lib/db"; 
 
 export async function GET(
   request: Request,
-  { params }: { params: { word: string } }
+  // 1. Update the type to be a Promise
+  context: { params: Promise<{ word: string }> } 
 ) {
   try {
+    // 2. Await the params before trying to read the word
+    const params = await context.params;
     const wordToFind = decodeURIComponent(params.word);
     
-    // Example SQL query using Turso
     const result = await db.execute({
       sql: "SELECT * FROM dictionary WHERE word = ?",
       args: [wordToFind],
@@ -20,6 +22,7 @@ export async function GET(
 
     return NextResponse.json(result.rows[0]);
   } catch (error) {
+    console.error("Database error:", error);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
   }
 }
