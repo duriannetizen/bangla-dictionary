@@ -3,11 +3,9 @@ import { db } from "@/lib/db";
 
 export async function GET(
   request: Request,
-  // 1. Update the type to be a Promise
   context: { params: Promise<{ word: string }> } 
 ) {
   try {
-    // 2. Await the params before trying to read the word
     const params = await context.params;
     const wordToFind = decodeURIComponent(params.word);
     
@@ -20,7 +18,31 @@ export async function GET(
       return NextResponse.json({ error: "Word not found" }, { status: 404 });
     }
 
-    return NextResponse.json(result.rows[0]);
+    const row = result.rows[0];
+
+    // 1. Convert the SQLite category text back into a JavaScript Array
+    let parsedCategory = [];
+    if (row.category) {
+      try {
+        parsedCategory = JSON.parse(row.category as string);
+      } catch (e) {
+        // Fallback just in case the data isn't perfectly formatted JSON
+        parsedCategory = [row.category]; 
+      }
+    }
+
+    // 2. Construct the final object to send to the frontend
+    const formattedWord = {
+      reference: row.reference,
+      word: row.word,
+      pronunciation: row.pronunciation,
+      root: row.root,
+      category: parsedCategory, // Send the array, not the string!
+      meaning: row.meaning
+    };
+
+    return NextResponse.json(formattedWord);
+
   } catch (error) {
     console.error("Database error:", error);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
