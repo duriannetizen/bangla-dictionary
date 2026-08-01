@@ -33,7 +33,7 @@ export async function GET(
 
     // 2. Construct the final object to send to the frontend
     const formattedWord = {
-      reference: row.reference,
+      //reference: row.reference,
       word: row.word,
       pronunciation: row.pronunciation,
       root: row.root,
