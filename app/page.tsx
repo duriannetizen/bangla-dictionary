@@ -40,16 +40,42 @@ export default function HomePage() {
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
+  // Initialize Session Cache (Runs once on mount)
   useEffect(() => {
+    // 1. Restore the keyboard mode if the user selected one earlier in the session
+    const storedKeyboard = sessionStorage.getItem("dictionaryKeyboardMode") as KeyboardMode | null;
+    if (storedKeyboard && (storedKeyboard === "unicode" || storedKeyboard === "avro")) {
+      setKeyboardMode(storedKeyboard);
+    }
+
+    // 2. Check if we already fetched the random words for this session
+    const cachedData = sessionStorage.getItem("dictionaryHomeData");
+    
+    if (cachedData) {
+      // Load instantly from memory without hitting the Turso database
+      try {
+        const parsed = JSON.parse(cachedData);
+        if (parsed.wordOfDay) setWordOfDay(parsed.wordOfDay);
+        if (parsed.trending) setTrendingWords(parsed.trending);
+        return; // Exit early, skipping the fetch
+      } catch (e) {
+        console.error("Cache parsing error", e);
+      }
+    }
+
+    // 3. If no cache exists (fresh visit or direct link), fetch from API
     fetch("/api/random")
       .then(res => res.json())
       .then(data => {
         if (data.wordOfDay) setWordOfDay(data.wordOfDay);
         if (data.trending) setTrendingWords(data.trending);
+        // Save the result to session storage for the next time they hit the homepage
+        sessionStorage.setItem("dictionaryHomeData", JSON.stringify(data));
       })
       .catch(err => console.error("Failed to load random words", err));
   }, []);
 
+  // Handle clicking outside the search dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -60,6 +86,7 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Handle Debounced Search
   useEffect(() => {
     const converted = convertInput(rawInput, keyboardMode);
     setQuery(converted);
@@ -100,6 +127,11 @@ export default function HomePage() {
     }
   };
 
+  const handleKeyboardSelect = (mode: KeyboardMode) => {
+    setKeyboardMode(mode);
+    sessionStorage.setItem("dictionaryKeyboardMode", mode); // Save preference for the session
+  };
+
   return (
     <main className="min-h-screen flex flex-col justify-center items-center px-4 py-8 max-w-5xl mx-auto w-full bg-white dark:bg-gray-900 transition-colors">
       
@@ -116,7 +148,7 @@ export default function HomePage() {
           {KEYBOARD_OPTIONS.map((mode) => (
             <button
               key={mode.id}
-              onClick={() => setKeyboardMode(mode.id)}
+              onClick={() => handleKeyboardSelect(mode.id)}
               aria-pressed={keyboardMode === mode.id}
               className={`px-4 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-[#F42A41] transition-all font-medium ${
                 keyboardMode === mode.id
@@ -167,7 +199,7 @@ export default function HomePage() {
                       <span 
                         className="text-xs bg-[#006A4E]/10 dark:bg-[#42a88a]/20 text-[#006A4E] dark:text-[#42a88a] font-semibold px-2.5 py-1 rounded-full"
                         dangerouslySetInnerHTML={{ __html: item.category[0] }}
-                      ></span>
+                    ></span>
                     )}
                   </button>
                 </li>
