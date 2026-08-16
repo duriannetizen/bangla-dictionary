@@ -48,6 +48,18 @@ export default function WordPage({ params }: PageProps) {
     fetchWordDetails();
   }, [decodedWord]);
 
+  // Helper function to auto-hyperlink cross-references
+  const processMeaning = (text: string) => {
+    if (!text) return "";
+    
+    // Regex looks for "দ্রষ্টব্য." or "তুলনীয়.", ignores spaces, and captures the next valid word
+    // It stops capturing if it hits a space, comma, or dari (।)
+    return text.replace(
+      /(দ্রষ্টব্য\.|তুলনীয়\.)\s*([^\s।,.<>]+)/g,
+      '$1 <a href="/word/$2" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">$2</a>'
+    );
+  };
+
   return (
     <main className="min-h-screen flex flex-col justify-center items-center w-full bg-white dark:bg-gray-900 px-4 py-4 transition-colors">
       <div className="w-full max-w-4xl mx-auto flex flex-col">
@@ -81,14 +93,12 @@ export default function WordPage({ params }: PageProps) {
           <article className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden w-full">
             <div className="p-6 md:p-10">
               
-              {/* Hero Word and inline Category Capsules */}
               <div className="flex flex-wrap items-center gap-4 mb-6">
                 <h1 
                   className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight"
                   dangerouslySetInnerHTML={{ __html: data.word }}
                 ></h1>
                 
-                {/* Capsules moved up and positioned parallel, with title removed */}
                 <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
                   {data.category && data.category.length > 0 && (
                     data.category.map((cat, idx) => (
@@ -102,7 +112,6 @@ export default function WordPage({ params }: PageProps) {
                 </div>
               </div>
 
-              {/* Uniform Row now contains only Pronunciation and Root (বুৎপত্তি) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5 border-y border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 -mx-6 md:-mx-10 px-6 md:px-10 mb-8 items-center">
                 <div>
                   <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">উচ্চারণ</span>
@@ -124,9 +133,10 @@ export default function WordPage({ params }: PageProps) {
                 <h2 id="meaning-heading" className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-3">
                   অর্থ ও প্রয়োগ
                 </h2>
+                {/* Apply the processMeaning helper here */}
                 <div 
                   className="text-gray-800 dark:text-gray-200 text-xl md:text-2xl leading-relaxed whitespace-pre-line font-medium"
-                  dangerouslySetInnerHTML={{ __html: data.meaning }}
+                  dangerouslySetInnerHTML={{ __html: processMeaning(data.meaning) }}
                 ></div>
               </section>
               
