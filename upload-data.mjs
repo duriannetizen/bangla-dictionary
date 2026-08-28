@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { createClient } from '@libsql/client';
 
-// 1. Put the exact name of your local database file here
+// 1. Pointing to your local database file
 const localDb = new Database('bangla-obhidhan.db');
 
 // 2. Paste your Turso credentials here
@@ -11,10 +11,15 @@ const tursoDb = createClient({
 });
 
 async function uploadData() {
-  console.log("Starting data sync...");
+  console.log("Starting data sync for all tables...\n");
 
   try {
-    // 3. Ensure the table exists in Turso
+    // ==========================================
+    // Phase 1: SYNC 'dictionary' TABLE
+    // ==========================================
+    console.log("--- Syncing 'dictionary' table ---");
+    
+    // We MUST create and sync this table first because eng_trans depends on it
     await tursoDb.execute(`
       CREATE TABLE IF NOT EXISTS dictionary (
         reference TEXT PRIMARY KEY,
@@ -26,53 +31,81 @@ async function uploadData() {
       )
     `);
 
-    // 4. Fetch existing references from the cloud (Turso)
-    console.log("Checking cloud database for existing words...");
-    const tursoResult = await tursoDb.execute('SELECT reference FROM dictionary');
-    
-    // Store them in a JavaScript Set for instant lookups
-    const existingCloudRefs = new Set(tursoResult.rows.map(row => row.reference));
-    console.log(`Found ${existingCloudRefs.size} words already in Turso.`);
+    const tursoDictResult = await tursoDb.execute('SELECT reference FROM dictionary');
+    const existingDictRefs = new Set(tursoDictResult.rows.map(row => row.reference));
 
-    // 5. Read all words from your local database
-    const localRows = localDb.prepare('SELECT * FROM dictionary').all();
-    console.log(`Found ${localRows.length} words in the local database.`);
+    const localDictRows = localDb.prepare('SELECT * FROM dictionary').all();
+    const dictRowsToUpload = localDictRows.filter(row => !existingDictRefs.has(row.reference));
 
-    // 6. Filter out the ones that already exist in the cloud
-    const rowsToUpload = localRows.filter(row => !existingCloudRefs.has(row.reference));
-
-    if (rowsToUpload.length === 0) {
-      console.log("✅ The cloud database is already up to date. No new words to upload.");
-      return;
-    }
-
-    console.log(`Preparing to upload ${rowsToUpload.length} new words...`);
-
-    let count = 0;
-
-    // 7. Upload only the new rows to Turso
-    for (const row of rowsToUpload) {
-      try {
-        await tursoDb.execute({
-          // We can use standard INSERT here since we pre-checked for duplicates
-          sql: `INSERT INTO dictionary (reference, word, pronunciation, root, category, meaning) VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [row.reference, row.word, row.pronunciation, row.root, row.category, row.meaning]
-        });
-        
-        count++;
-        // Print a progress update every 100 words
-        if (count % 100 === 0) {
-          console.log(`Uploaded ${count} of ${rowsToUpload.length} new words...`);
+    if (dictRowsToUpload.length === 0) {
+      console.log("✅ 'dictionary' table is already up to date.");
+    } else {
+      console.log(`Uploading ${dictRowsToUpload.length} new words to 'dictionary'...`);
+      let dictCount = 0;
+      for (const row of dictRowsToUpload) {
+        try {
+          await tursoDb.execute({
+            sql: `INSERT INTO dictionary (reference, word, pronunciation, root, category, meaning) VALUES (?, ?, ?, ?, ?, ?)`,
+            args: [row.reference, row.word, row.pronunciation, row.root, row.category, row.meaning]
+          });
+          dictCount++;
+          if (dictCount % 100 === 0) console.log(`Uploaded ${dictCount} of ${dictRowsToUpload.length}...`);
+        } catch (error) {
+          console.error(`Error uploading reference '${row.reference}' to dictionary:`, error.message);
         }
-      } catch (error) {
-        console.error(`Error uploading reference '${row.reference}':`, error.message);
       }
+      console.log(`✅ Finished uploading ${dictCount} new words to 'dictionary'.`);
     }
 
-    console.log(`✅ Success! Finished uploading ${count} new words to Turso.`);
+    // ==========================================
+    // Phase 2: SYNC 'eng_trans' TABLE
+    // ==========================================
+    console.log("\n--- Syncing 'eng_trans' table ---");
+    
+    // Create the table with your exact columns and the Foreign Key constraint
+    await tursoDb.execute(`
+      CREATE TABLE IF NOT EXISTS eng_trans (
+        reference TEXT PRIMARY KEY,
+        english_word TEXT NOT NULL,
+        usage_sentence TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (reference) REFERENCES dictionary(reference)
+      )
+    `);
+
+    // Fetch existing references to avoid duplicates
+    const tursoEngResult = await tursoDb.execute('SELECT reference FROM eng_trans');
+    const existingEngRefs = new Set(tursoEngResult.rows.map(row => row.reference));
+
+    const localEngRows = localDb.prepare('SELECT * FROM eng_trans').all();
+    const engRowsToUpload = localEngRows.filter(row => !existingEngRefs.has(row.reference));
+
+    if (engRowsToUpload.length === 0) {
+      console.log("✅ 'eng_trans' table is already up to date.");
+    } else {
+      console.log(`Uploading ${engRowsToUpload.length} new records to 'eng_trans'...`);
+      let engCount = 0;
+      for (const row of engRowsToUpload) {
+        try {
+          // If your local DB has a created_at value, it uses it. If not, it falls back to Turso's CURRENT_TIMESTAMP
+          await tursoDb.execute({
+            sql: `INSERT INTO eng_trans (reference, english_word, usage_sentence, created_at) VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+            args: [row.reference, row.english_word, row.usage_sentence, row.created_at || null]
+          });
+          
+          engCount++;
+          if (engCount % 100 === 0) console.log(`Uploaded ${engCount} of ${engRowsToUpload.length}...`);
+        } catch (error) {
+          console.error(`Error uploading row '${row.reference}' to eng_trans:`, error.message);
+        }
+      }
+      console.log(`✅ Finished uploading ${engCount} new records to 'eng_trans'.`);
+    }
+
+    console.log("\n🎉 Full database sync complete!");
     
   } catch (error) {
-    console.error("Migration failed:", error);
+    console.error("\n❌ Migration failed:", error);
   }
 }
 
