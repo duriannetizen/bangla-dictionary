@@ -48,15 +48,29 @@ export default function WordPage({ params }: PageProps) {
     fetchWordDetails();
   }, [decodedWord]);
 
-  // Helper function to auto-hyperlink cross-references
+  // Upgraded Helper function to handle multi-word and comma-separated cross-references
   const processMeaning = (text: string) => {
     if (!text) return "";
     
-    // Regex looks for "দ্রষ্টব্য." or "তুলনীয়.", ignores spaces, and captures the next valid word
-    // It stops capturing if it hits a space, comma, or dari (।)
+    // 1. Matches "দ্রষ্টব্য." or "তুলনীয়." and captures everything up to the next dari (।)
     return text.replace(
-      /(দ্রষ্টব্য\.|তুলনীয়\.)\s*([^\s।,.<>]+)/g,
-      '$1 <a href="/word/$2" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">$2</a>'
+      /(দ্রষ্টব্য\.|তুলনীয়\.)\s*([^।]+)/g,
+      (match, prefix, content) => {
+        // 2. Split the captured content by commas to handle multiple words
+        const linkedContent = content
+          .split(',')
+          .map((part: string) => {
+            const trimmedWord = part.trim();
+            if (!trimmedWord) return "";
+            
+            // 3. Generate a hyperlink for each individual word/phrase
+            return `<a href="/word/${encodeURIComponent(trimmedWord)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${trimmedWord}</a>`;
+          })
+          .join(', '); // Re-join multiple links with a comma and space
+
+        // 4. Return the prefix (e.g., "দ্রষ্টব্য.") followed by the new HTML links
+        return `${prefix} ${linkedContent}`;
+      }
     );
   };
 
@@ -133,7 +147,6 @@ export default function WordPage({ params }: PageProps) {
                 <h2 id="meaning-heading" className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-3">
                   অর্থ ও প্রয়োগ
                 </h2>
-                {/* Apply the processMeaning helper here */}
                 <div 
                   className="text-gray-800 dark:text-gray-200 text-xl md:text-2xl leading-relaxed whitespace-pre-line font-medium"
                   dangerouslySetInnerHTML={{ __html: processMeaning(data.meaning) }}
