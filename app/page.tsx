@@ -21,9 +21,10 @@ interface TrendingWord {
   word: string;
 }
 
+// Updated labels for better user understanding
 const KEYBOARD_OPTIONS: { id: KeyboardMode; label: string }[] = [
-  { id: "unicode", label: "ইউনিকোড" },
-  { id: "avro", label: "অভ্র ফনেটিক" }
+  { id: "unicode", label: "বাংলায় টাইপ" },
+  { id: "avro", label: "ইংরেজি (অভ্র) টাইপ" }
 ];
 
 export default function HomePage() {
@@ -40,42 +41,36 @@ export default function HomePage() {
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize Session Cache (Runs once on mount)
+  // Initialize Session Cache
   useEffect(() => {
-    // 1. Restore the keyboard mode if the user selected one earlier in the session
     const storedKeyboard = sessionStorage.getItem("dictionaryKeyboardMode") as KeyboardMode | null;
     if (storedKeyboard && (storedKeyboard === "unicode" || storedKeyboard === "avro")) {
       setKeyboardMode(storedKeyboard);
     }
 
-    // 2. Check if we already fetched the random words for this session
     const cachedData = sessionStorage.getItem("dictionaryHomeData");
     
     if (cachedData) {
-      // Load instantly from memory without hitting the Turso database
       try {
         const parsed = JSON.parse(cachedData);
         if (parsed.wordOfDay) setWordOfDay(parsed.wordOfDay);
         if (parsed.trending) setTrendingWords(parsed.trending);
-        return; // Exit early, skipping the fetch
+        return; 
       } catch (e) {
         console.error("Cache parsing error", e);
       }
     }
 
-    // 3. If no cache exists (fresh visit or direct link), fetch from API
     fetch("/api/random")
       .then(res => res.json())
       .then(data => {
         if (data.wordOfDay) setWordOfDay(data.wordOfDay);
         if (data.trending) setTrendingWords(data.trending);
-        // Save the result to session storage for the next time they hit the homepage
         sessionStorage.setItem("dictionaryHomeData", JSON.stringify(data));
       })
       .catch(err => console.error("Failed to load random words", err));
   }, []);
 
-  // Handle clicking outside the search dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -86,7 +81,6 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle Debounced Search
   useEffect(() => {
     const converted = convertInput(rawInput, keyboardMode);
     setQuery(converted);
@@ -129,7 +123,7 @@ export default function HomePage() {
 
   const handleKeyboardSelect = (mode: KeyboardMode) => {
     setKeyboardMode(mode);
-    sessionStorage.setItem("dictionaryKeyboardMode", mode); // Save preference for the session
+    sessionStorage.setItem("dictionaryKeyboardMode", mode); 
   };
 
   return (
