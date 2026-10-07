@@ -20,25 +20,45 @@ export async function GET(
 
     const row = result.rows[0];
 
-    // 1. Convert the SQLite category text back into a JavaScript Array
+    // Convert the SQLite category text back into a JavaScript Array
     let parsedCategory = [];
     if (row.category) {
       try {
         parsedCategory = JSON.parse(row.category as string);
       } catch (e) {
-        // Fallback just in case the data isn't perfectly formatted JSON
         parsedCategory = [row.category]; 
       }
     }
 
-    // 2. Construct the final object to send to the frontend
+    // Fetch English Translation based on the reference key
+    let englishTranslation = null;
+    try {
+      const engResult = await db.execute({
+        sql: "SELECT english_word, part_of_speech, usage_sentence FROM eng_trans WHERE reference = ?",
+        args: [row.reference],
+      });
+      
+      if (engResult.rows.length > 0) {
+        const engRow = engResult.rows[0];
+        englishTranslation = {
+          english_word: engRow.english_word,
+          part_of_speech: engRow.part_of_speech,
+          usage_sentence: engRow.usage_sentence
+        };
+      }
+    } catch (err) {
+      console.error("Error fetching eng_trans:", err);
+      // If translation fails, we still return the dictionary word safely
+    }
+
     const formattedWord = {
-      //reference: row.reference,
+      reference: row.reference,
       word: row.word,
       pronunciation: row.pronunciation,
       root: row.root,
-      category: parsedCategory, // Send the array, not the string!
-      meaning: row.meaning
+      category: parsedCategory,
+      meaning: row.meaning,
+      englishTranslation // Attached to the response payload
     };
 
     return NextResponse.json(formattedWord);

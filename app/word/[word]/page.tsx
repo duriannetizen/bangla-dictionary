@@ -10,6 +10,11 @@ interface WordData {
   root?: string;
   category?: string[];
   meaning: string;
+  englishTranslation?: {
+    english_word: string;
+    part_of_speech?: string;
+    usage_sentence: string;
+  };
 }
 
 type PageParams = { word: string };
@@ -25,6 +30,7 @@ export default function WordPage({ params }: PageProps) {
   const [data, setData] = useState<WordData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showEnglish, setShowEnglish] = useState(false); // Toggle State
 
   useEffect(() => {
     async function fetchWordDetails() {
@@ -48,13 +54,11 @@ export default function WordPage({ params }: PageProps) {
     fetchWordDetails();
   }, [decodedWord]);
 
-  // Upgraded Helper function to handle multiple cross-reference patterns
+  // Regex Helper Function
   const processMeaning = (text: string) => {
     if (!text) return "";
-    
     let processedText = text;
 
-    // Pattern 1: "দ্রষ্টব্য." or "তুলনীয়." followed by comma-separated words
     processedText = processedText.replace(
       /(দ্রষ্টব্য\.|তুলনীয়\.)\s*([^।]+)/g,
       (match, prefix, content) => {
@@ -70,8 +74,6 @@ export default function WordPage({ params }: PageProps) {
       }
     );
 
-    // Pattern 2: 'word'-র রূপ or 'word'-এর রূপ
-    // Captures the word inside single quotes ($1) and the suffix up to the word 'রূপ' ($2)
     processedText = processedText.replace(
       /'([^']+)'(-(?:র|এর)[^।]*?রূপ)/g,
       (match, word, suffix) => {
@@ -86,6 +88,7 @@ export default function WordPage({ params }: PageProps) {
     <main className="min-h-screen flex flex-col justify-center items-center w-full bg-white dark:bg-gray-900 px-4 py-4 transition-colors">
       <div className="w-full max-w-4xl mx-auto flex flex-col">
         
+        {/* Navigation always visible */}
         <nav className="mb-4" aria-label="Breadcrumb">
           <Link
             href="/"
@@ -112,57 +115,119 @@ export default function WordPage({ params }: PageProps) {
         )}
 
         {!isLoading && !error && data && (
-          <article className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden w-full">
-            <div className="p-6 md:p-10">
-              
-              <div className="flex flex-wrap items-center gap-4 mb-6">
-                <h1 
-                  className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight"
-                  dangerouslySetInnerHTML={{ __html: data.word }}
-                ></h1>
+          showEnglish && data.englishTranslation ? (
+            // ==========================================
+            // ENGLISH TRANSLATION CARD VIEW
+            // ==========================================
+            <article className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden w-full animate-in fade-in zoom-in duration-300">
+              <div className="p-6 md:p-10">
+                <div className="flex flex-wrap items-center gap-4 mb-6">
+                  
+                  <h1 className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight">
+                    {data.englishTranslation.english_word}
+                  </h1>
+                  
+                  <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
+                    {data.englishTranslation.part_of_speech && (
+                      <span className="px-3 py-1 bg-[#F42A41]/10 dark:bg-[#F42A41]/20 text-[#F42A41] dark:text-[#ff4d60] text-sm font-bold rounded-full border border-[#F42A41]/20">
+                        {data.englishTranslation.part_of_speech}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Close Button */}
+                  <button
+                    onClick={() => setShowEnglish(false)}
+                    className="ml-auto p-3 bg-gray-100 hover:bg-[#F42A41] hover:text-white text-gray-500 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-[#F42A41] transition-colors rounded-full focus:outline-none focus:ring-2 focus:ring-[#F42A41]"
+                    aria-label="Close English translation"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Example Sentence Section */}
+                <section aria-labelledby="english-usage-heading" className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
+                  <h2 id="english-usage-heading" className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-4">
+                    Example Sentence
+                  </h2>
+                  <p className="text-gray-800 dark:text-gray-200 text-xl md:text-2xl leading-relaxed italic border-l-4 border-[#006A4E]/40 pl-5 py-2 font-medium">
+                    "{data.englishTranslation.usage_sentence}"
+                  </p>
+                </section>
+              </div>
+            </article>
+
+          ) : (
+            // ==========================================
+            // BENGALI WORD CARD VIEW
+            // ==========================================
+            <article className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden w-full animate-in fade-in zoom-in duration-300">
+              <div className="p-6 md:p-10">
                 
-                <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
-                  {data.category && data.category.length > 0 && (
-                    data.category.map((cat, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1 bg-[#F42A41]/10 dark:bg-[#F42A41]/20 text-[#F42A41] dark:text-[#ff4d60] text-sm font-bold rounded-full border border-[#F42A41]/20"
-                        dangerouslySetInnerHTML={{ __html: cat }}
-                      ></span>
-                    ))
+                <div className="flex flex-wrap items-center gap-4 mb-6">
+                  <h1 
+                    className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight"
+                    dangerouslySetInnerHTML={{ __html: data.word }}
+                  ></h1>
+                  
+                  <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
+                    {data.category && data.category.length > 0 && (
+                      data.category.map((cat, idx) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1 bg-[#F42A41]/10 dark:bg-[#F42A41]/20 text-[#F42A41] dark:text-[#ff4d60] text-sm font-bold rounded-full border border-[#F42A41]/20"
+                          dangerouslySetInnerHTML={{ __html: cat }}
+                        ></span>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Open English Translation Button - ONLY shows if data exists */}
+                  {data.englishTranslation && (
+                    <button
+                      onClick={() => setShowEnglish(true)}
+                      className="ml-auto px-5 py-2.5 bg-[#006A4E] hover:bg-[#00523b] text-white transition-colors rounded-full font-bold text-sm flex items-center gap-2 shadow-md focus:outline-none focus:ring-4 focus:ring-[#006A4E]/30"
+                    >
+                      ইংরেজি অর্থ
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
                   )}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5 border-y border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 -mx-6 md:-mx-10 px-6 md:px-10 mb-8 items-center">
-                <div>
-                  <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">উচ্চারণ</span>
-                  <span 
-                    className="text-lg font-medium text-gray-900 dark:text-white"
-                    dangerouslySetInnerHTML={{ __html: data.pronunciation || "—" }}
-                  ></span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5 border-y border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 -mx-6 md:-mx-10 px-6 md:px-10 mb-8 items-center">
+                  <div>
+                    <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">উচ্চারণ</span>
+                    <span 
+                      className="text-lg font-medium text-gray-900 dark:text-white"
+                      dangerouslySetInnerHTML={{ __html: data.pronunciation || "—" }}
+                    ></span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">বুৎপত্তি</span>
+                    <span 
+                      className="text-lg font-medium text-gray-900 dark:text-white"
+                      dangerouslySetInnerHTML={{ __html: data.root || "—" }}
+                    ></span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">বুৎপত্তি</span>
-                  <span 
-                    className="text-lg font-medium text-gray-900 dark:text-white"
-                    dangerouslySetInnerHTML={{ __html: data.root || "—" }}
-                  ></span>
-                </div>
-              </div>
 
-              <section aria-labelledby="meaning-heading">
-                <h2 id="meaning-heading" className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-3">
-                  অর্থ ও প্রয়োগ
-                </h2>
-                <div 
-                  className="text-gray-800 dark:text-gray-200 text-xl md:text-2xl leading-relaxed whitespace-pre-line font-medium"
-                  dangerouslySetInnerHTML={{ __html: processMeaning(data.meaning) }}
-                ></div>
-              </section>
-              
-            </div>
-          </article>
+                <section aria-labelledby="meaning-heading">
+                  <h2 id="meaning-heading" className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-3">
+                    অর্থ ও প্রয়োগ
+                  </h2>
+                  <div 
+                    className="text-gray-800 dark:text-gray-200 text-xl md:text-2xl leading-relaxed whitespace-pre-line font-medium"
+                    dangerouslySetInnerHTML={{ __html: processMeaning(data.meaning) }}
+                  ></div>
+                </section>
+                
+              </div>
+            </article>
+          )
         )}
       </div>
     </main>
