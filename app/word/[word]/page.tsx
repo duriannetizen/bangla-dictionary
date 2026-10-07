@@ -48,30 +48,38 @@ export default function WordPage({ params }: PageProps) {
     fetchWordDetails();
   }, [decodedWord]);
 
-  // Upgraded Helper function to handle multi-word and comma-separated cross-references
+  // Upgraded Helper function to handle multiple cross-reference patterns
   const processMeaning = (text: string) => {
     if (!text) return "";
     
-    // 1. Matches "দ্রষ্টব্য." or "তুলনীয়." and captures everything up to the next dari (।)
-    return text.replace(
+    let processedText = text;
+
+    // Pattern 1: "দ্রষ্টব্য." or "তুলনীয়." followed by comma-separated words
+    processedText = processedText.replace(
       /(দ্রষ্টব্য\.|তুলনীয়\.)\s*([^।]+)/g,
       (match, prefix, content) => {
-        // 2. Split the captured content by commas to handle multiple words
         const linkedContent = content
           .split(',')
           .map((part: string) => {
             const trimmedWord = part.trim();
             if (!trimmedWord) return "";
-            
-            // 3. Generate a hyperlink for each individual word/phrase
             return `<a href="/word/${encodeURIComponent(trimmedWord)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${trimmedWord}</a>`;
           })
-          .join(', '); // Re-join multiple links with a comma and space
-
-        // 4. Return the prefix (e.g., "দ্রষ্টব্য.") followed by the new HTML links
+          .join(', ');
         return `${prefix} ${linkedContent}`;
       }
     );
+
+    // Pattern 2: 'word'-র রূপ or 'word'-এর রূপ
+    // Captures the word inside single quotes ($1) and the suffix up to the word 'রূপ' ($2)
+    processedText = processedText.replace(
+      /'([^']+)'(-(?:র|এর)[^।]*?রূপ)/g,
+      (match, word, suffix) => {
+        return `'<a href="/word/${encodeURIComponent(word)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${word}</a>'${suffix}`;
+      }
+    );
+
+    return processedText;
   };
 
   return (
