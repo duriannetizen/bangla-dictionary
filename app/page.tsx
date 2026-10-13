@@ -26,6 +26,9 @@ const KEYBOARD_OPTIONS: { id: KeyboardMode; label: string }[] = [
   { id: "avro", label: "অভ্র ফনেটিক" }
 ];
 
+// Helper for timing the animation
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -40,42 +43,127 @@ export default function HomePage() {
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize Session Cache (Runs once on mount)
+  // --- TUTORIAL STATE ---
+  const [isTutorialActive, setIsTutorialActive] = useState(false);
+  const [tutorialInput, setTutorialInput] = useState("");
+  const [tutorialKeyboard, setTutorialKeyboard] = useState<KeyboardMode>("unicode");
+  const [showTutorialDropdown, setShowTutorialDropdown] = useState(false);
+  const [showPointer, setShowPointer] = useState(false);
+  const tutorialCancelled = useRef(false);
+
+  // Fetch Random Words & Initialize Cache
   useEffect(() => {
-    // 1. Restore the keyboard mode if the user selected one earlier in the session
     const storedKeyboard = sessionStorage.getItem("dictionaryKeyboardMode") as KeyboardMode | null;
     if (storedKeyboard && (storedKeyboard === "unicode" || storedKeyboard === "avro")) {
       setKeyboardMode(storedKeyboard);
     }
 
-    // 2. Check if we already fetched the random words for this session
     const cachedData = sessionStorage.getItem("dictionaryHomeData");
-    
     if (cachedData) {
-      // Load instantly from memory without hitting the Turso database
       try {
         const parsed = JSON.parse(cachedData);
         if (parsed.wordOfDay) setWordOfDay(parsed.wordOfDay);
         if (parsed.trending) setTrendingWords(parsed.trending);
-        return; // Exit early, skipping the fetch
+        return; 
       } catch (e) {
         console.error("Cache parsing error", e);
       }
     }
 
-    // 3. If no cache exists (fresh visit or direct link), fetch from API
     fetch("/api/random")
       .then(res => res.json())
       .then(data => {
         if (data.wordOfDay) setWordOfDay(data.wordOfDay);
         if (data.trending) setTrendingWords(data.trending);
-        // Save the result to session storage for the next time they hit the homepage
         sessionStorage.setItem("dictionaryHomeData", JSON.stringify(data));
       })
       .catch(err => console.error("Failed to load random words", err));
   }, []);
 
-  // Handle clicking outside the search dropdown
+  // Tutorial Sequence Logic
+  useEffect(() => {
+    const hasSeenTutorial = sessionStorage.getItem("dictionaryTutorialDone");
+    if (hasSeenTutorial) return;
+
+    setIsTutorialActive(true);
+    tutorialCancelled.current = false;
+
+    const typeText = async (text: string) => {
+      for (let i = 0; i <= text.length; i++) {
+        if (tutorialCancelled.current) return;
+        setTutorialInput(text.slice(0, i));
+        await sleep(150); // Average typing speed
+      }
+    };
+
+    const runTutorial = async () => {
+      await sleep(1000); // Initial pause
+
+      for (let loop = 0; loop < 3; loop++) {
+        if (tutorialCancelled.current) break;
+
+        // Step 1: Type Bengali word
+        setTutorialKeyboard("unicode");
+        await typeText("কলম");
+        if (tutorialCancelled.current) break;
+        
+        // Show result panel for 3 seconds
+        setShowTutorialDropdown(true);
+        await sleep(3000);
+        if (tutorialCancelled.current) break;
+        
+        // Clear
+        setShowTutorialDropdown(false);
+        setTutorialInput("");
+        await sleep(500);
+        if (tutorialCancelled.current) break;
+
+        // Step 2: Animate Pointer to Avro
+        setShowPointer(true);
+        await sleep(1200); // Wait for pointer CSS animation to visually "click"
+        if (tutorialCancelled.current) break;
+        
+        setTutorialKeyboard("avro"); // Button changes state
+        setShowPointer(false);
+        await sleep(800);
+        if (tutorialCancelled.current) break;
+
+        // Step 3: Type English word
+        await typeText("kolom");
+        if (tutorialCancelled.current) break;
+        
+        // Show result panel for 3 seconds
+        setShowTutorialDropdown(true);
+        await sleep(3000);
+        if (tutorialCancelled.current) break;
+        
+        // Clear for next loop
+        setShowTutorialDropdown(false);
+        setTutorialInput("");
+        await sleep(1000);
+      }
+
+      if (!tutorialCancelled.current) {
+        endTutorial();
+      }
+    };
+
+    runTutorial();
+
+    return () => { tutorialCancelled.current = true; };
+  }, []);
+
+  const endTutorial = () => {
+    tutorialCancelled.current = true;
+    setIsTutorialActive(false);
+    sessionStorage.setItem("dictionaryTutorialDone", "true");
+    setTutorialInput("");
+    setShowTutorialDropdown(false);
+    setShowPointer(false);
+    setTutorialKeyboard("unicode");
+  };
+
+  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -86,8 +174,10 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle Debounced Search
+  // Real Search Logic
   useEffect(() => {
+    if (isTutorialActive) return; // Disable real search during tutorial
+
     const converted = convertInput(rawInput, keyboardMode);
     setQuery(converted);
 
@@ -114,7 +204,7 @@ export default function HomePage() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [rawInput, keyboardMode]);
+  }, [rawInput, keyboardMode, isTutorialActive]);
 
   const handleSelectWord = (word: string) => {
     setIsDropdownOpen(false);
@@ -122,19 +212,29 @@ export default function HomePage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && query.trim()) {
+    if (e.key === "Enter" && query.trim() && !isTutorialActive) {
       handleSelectWord(query.trim());
     }
   };
 
   const handleKeyboardSelect = (mode: KeyboardMode) => {
     setKeyboardMode(mode);
-    sessionStorage.setItem("dictionaryKeyboardMode", mode); // Save preference for the session
+    sessionStorage.setItem("dictionaryKeyboardMode", mode); 
   };
 
+  // Active state determines whether UI reads from real user input or tutorial state
+  const activeKeyboard = isTutorialActive ? tutorialKeyboard : keyboardMode;
+  const activeInput = isTutorialActive ? tutorialInput : rawInput;
+  const activePlaceholder = activeKeyboard === "avro" ? "এখানে ইংরেজি বানানে টাইপ করুন..." : "শব্দ অনুসন্ধান করুন...";
+
   return (
-    <main className="min-h-screen flex flex-col justify-center items-center px-4 py-8 max-w-5xl mx-auto w-full bg-white dark:bg-gray-900 transition-colors">
-      
+    <main 
+      // Capture ANY interaction on the page to instantly kill the tutorial
+      onClickCapture={isTutorialActive ? endTutorial : undefined}
+      onKeyDownCapture={isTutorialActive ? endTutorial : undefined}
+      onTouchStartCapture={isTutorialActive ? endTutorial : undefined}
+      className="min-h-screen flex flex-col justify-center items-center px-4 py-8 max-w-5xl mx-auto w-full bg-white dark:bg-gray-900 transition-colors"
+    >
       <header className="text-center mb-10 w-full">
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[#006A4E] dark:text-[#42a88a] mb-4">
           আধুনিক বাংলা ভাষার অভিধান
@@ -142,70 +242,99 @@ export default function HomePage() {
       </header>
 
       <section ref={searchContainerRef} className="w-full max-w-2xl relative mb-12" aria-label="Search section">
+        
         <fieldset className="flex items-center justify-center gap-2 mb-4 text-sm">
           <legend className="sr-only">কীবোর্ড নির্বাচন করুন</legend>
           <span className="text-gray-600 dark:text-gray-300 font-medium mr-2">কীবোর্ড:</span>
+          
           {KEYBOARD_OPTIONS.map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => handleKeyboardSelect(mode.id)}
-              aria-pressed={keyboardMode === mode.id}
-              className={`px-4 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-[#F42A41] transition-all font-medium ${
-                keyboardMode === mode.id
-                  ? "bg-[#F42A41] text-white border-[#F42A41] shadow-md"
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-              }`}
-            >
-              {mode.label}
-            </button>
+            <div key={mode.id} className="relative">
+              <button
+                onClick={() => {
+                  if (!isTutorialActive) handleKeyboardSelect(mode.id);
+                }}
+                aria-pressed={activeKeyboard === mode.id}
+                className={`px-4 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-[#F42A41] transition-all font-medium ${
+                  activeKeyboard === mode.id
+                    ? "bg-[#F42A41] text-white border-[#F42A41] shadow-md"
+                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+              >
+                {mode.label}
+              </button>
+
+              {/* Animated Pointer for the Tutorial */}
+              {isTutorialActive && showPointer && mode.id === "avro" && (
+                <div className="absolute top-8 left-1/2 -translate-x-1/2 text-4xl animate-bounce pointer-events-none z-50 transition-all duration-500 text-gray-800 drop-shadow-lg">
+                  👆
+                </div>
+              )}
+            </div>
           ))}
         </fieldset>
 
-        <div className="relative shadow-lg rounded-full bg-white dark:bg-gray-800 border-2 border-[#006A4E] dark:border-[#42a88a] overflow-hidden focus-within:ring-4 focus-within:ring-[#006A4E]/20 transition-all">
+        <div className={`relative shadow-lg rounded-full bg-white dark:bg-gray-800 border-2 overflow-hidden transition-all ${isTutorialActive ? 'border-[#F42A41] ring-4 ring-[#F42A41]/20' : 'border-[#006A4E] dark:border-[#42a88a] focus-within:ring-4 focus-within:ring-[#006A4E]/20'}`}>
           <div className="flex items-center px-6 py-4">
             <svg className="w-6 h-6 text-[#F42A41] mr-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
-              value={rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
+              value={activeInput}
+              onChange={(e) => {
+                if (!isTutorialActive) setRawInput(e.target.value);
+              }}
               onKeyDown={handleKeyDown}
-              onFocus={() => query.trim() && setIsDropdownOpen(true)}
-              placeholder={keyboardMode === "avro" ? "এখানে ইংরেজি বানানে টাইপ করুন..." : "শব্দ অনুসন্ধান করুন..."}
+              onFocus={() => {
+                if (!isTutorialActive && query.trim()) setIsDropdownOpen(true);
+              }}
+              readOnly={isTutorialActive}
+              placeholder={activePlaceholder}
               aria-label="Search for a Bengali word"
               className="w-full text-lg md:text-xl text-gray-900 dark:text-white bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
             />
-            {isLoading && (
+            {!isTutorialActive && isLoading && (
               <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#006A4E] border-t-transparent ml-2 shrink-0" role="status" aria-label="Loading"></div>
             )}
           </div>
         </div>
 
-        {isDropdownOpen && (
+        {/* Faux Tutorial Dropdown OR Real Dropdown */}
+        {(isTutorialActive ? showTutorialDropdown : isDropdownOpen) && (
           <ul className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50 max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700" role="listbox">
-            {results.length > 0 ? (
-              results.map((item, index) => (
-                <li key={index} role="option" aria-selected="false">
-                  <button
-                    onClick={() => handleSelectWord(item.word)}
-                    className="w-full text-left px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 focus:bg-gray-50 dark:focus:bg-gray-700 focus:outline-none transition-colors flex items-center justify-between group"
-                  >
-                    <span 
-                      className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-[#F42A41] dark:group-hover:text-[#F42A41] transition-colors"
-                      dangerouslySetInnerHTML={{ __html: item.word }}
-                    ></span>
-                    {item.category && item.category.length > 0 && (
-                      <span 
-                        className="text-xs bg-[#006A4E]/10 dark:bg-[#42a88a]/20 text-[#006A4E] dark:text-[#42a88a] font-semibold px-2.5 py-1 rounded-full"
-                        dangerouslySetInnerHTML={{ __html: item.category[0] }}
-                    ></span>
-                    )}
-                  </button>
-                </li>
-              ))
+            
+            {isTutorialActive ? (
+              // Faux Dropdown for Tutorial
+              <li role="option" aria-selected="false">
+                <div className="w-full text-left px-6 py-4 bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
+                  <span className="text-xl font-bold text-[#F42A41]">কলম</span>
+                </div>
+              </li>
             ) : (
-              <li className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">কোনো ফলাফল পাওয়া যায়নি</li>
+              // Real Dropdown
+              results.length > 0 ? (
+                results.map((item, index) => (
+                  <li key={index} role="option" aria-selected="false">
+                    <button
+                      onClick={() => handleSelectWord(item.word)}
+                      className="w-full text-left px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 focus:bg-gray-50 dark:focus:bg-gray-700 focus:outline-none transition-colors flex items-center justify-between group"
+                    >
+                      <span 
+                        className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-[#F42A41] dark:group-hover:text-[#F42A41] transition-colors"
+                        dangerouslySetInnerHTML={{ __html: item.word }}
+                      ></span>
+                      {item.category && item.category.length > 0 && (
+                        <span 
+                          className="text-xs bg-[#006A4E]/10 dark:bg-[#42a88a]/20 text-[#006A4E] dark:text-[#42a88a] font-semibold px-2.5 py-1 rounded-full"
+                          dangerouslySetInnerHTML={{ __html: item.category[0] }}
+                        ></span>
+                      )}
+                    </button>
+                  </li>
+                ))
+              ) : (
+                <li className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">কোনো ফলাফল পাওয়া যায়নি</li>
+              )
             )}
           </ul>
         )}
