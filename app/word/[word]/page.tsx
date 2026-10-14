@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useRef } from "react";
 import Link from "next/link";
 
 interface WordData {
@@ -25,6 +25,8 @@ export default function WordPage({ params }: PageProps) {
   const [data, setData] = useState<WordData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const wordTitleRef = useRef<HTMLHeadingElement>(null); // NEW: Ref for auto-scaling text
 
   useEffect(() => {
     async function fetchWordDetails() {
@@ -48,13 +50,35 @@ export default function WordPage({ params }: PageProps) {
     fetchWordDetails();
   }, [decodedWord]);
 
-  // Upgraded Helper function to handle multiple cross-reference patterns
+  // Auto-Scale Font Size for Long Words
+  useEffect(() => {
+    const adjustFontSize = () => {
+      const el = wordTitleRef.current;
+      if (!el) return;
+      
+      el.style.fontSize = ""; // Reset to CSS default first
+      
+      requestAnimationFrame(() => {
+        let currentFontSize = parseFloat(window.getComputedStyle(el).fontSize);
+        while (el.scrollWidth > el.clientWidth && currentFontSize > 16) {
+          currentFontSize -= 1;
+          el.style.fontSize = `${currentFontSize}px`;
+        }
+      });
+    };
+
+    if (data) {
+      adjustFontSize();
+      window.addEventListener("resize", adjustFontSize);
+      return () => window.removeEventListener("resize", adjustFontSize);
+    }
+  }, [data]);
+
+  // Helper function for multiple cross-reference patterns
   const processMeaning = (text: string) => {
     if (!text) return "";
-    
     let processedText = text;
 
-    // Pattern 1: "দ্রষ্টব্য." or "তুলনীয়." followed by comma-separated words
     processedText = processedText.replace(
       /(দ্রষ্টব্য\.|তুলনীয়\.)\s*([^।]+)/g,
       (match, prefix, content) => {
@@ -63,19 +87,17 @@ export default function WordPage({ params }: PageProps) {
           .map((part: string) => {
             const trimmedWord = part.trim();
             if (!trimmedWord) return "";
-            return `<a href="/word/${encodeURIComponent(trimmedWord)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${trimmedWord}</a>`;
+            return `<a href="/word/${encodeURIComponent(trimmedWord)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${trimmedWord}</a>`;
           })
           .join(', ');
         return `${prefix} ${linkedContent}`;
       }
     );
 
-    // Pattern 2: 'word'-র রূপ or 'word'-এর রূপ
-    // Captures the word inside single quotes ($1) and the suffix up to the word 'রূপ' ($2)
     processedText = processedText.replace(
       /'([^']+)'(-(?:র|এর)[^।]*?রূপ)/g,
       (match, word, suffix) => {
-        return `'<a href="/word/${encodeURIComponent(word)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] dark:hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${word}</a>'${suffix}`;
+        return `'<a href="/word/${encodeURIComponent(word)}" class="text-[#006A4E] dark:text-[#42a88a] hover:text-[#F42A41] underline decoration-2 underline-offset-4 transition-colors">${word}</a>'${suffix}`;
       }
     );
 
@@ -89,9 +111,9 @@ export default function WordPage({ params }: PageProps) {
         <nav className="mb-4" aria-label="Breadcrumb">
           <Link
             href="/"
-            className="inline-flex items-center text-sm font-bold text-gray-500 dark:text-gray-400 hover:text-[#F42A41] dark:hover:text-[#F42A41] focus:outline-none focus:ring-2 focus:ring-[#006A4E] rounded transition-colors"
+            className="inline-flex items-center text-sm font-bold text-gray-500 hover:text-[#F42A41] transition-colors"
           >
-            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
             </svg>
             হোমপেজে ফিরে যান
@@ -99,12 +121,12 @@ export default function WordPage({ params }: PageProps) {
         </nav>
 
         {!isLoading && error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-[#F42A41] p-6 rounded shadow-sm w-full text-center" role="alert">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{error}</h2>
-            <p className="text-gray-600 dark:text-gray-300 mb-6">বানান সঠিক রয়েছে কিনা পুনরায় পরীক্ষা করে দেখুন।</p>
+          <div className="bg-red-50 border-l-4 border-[#F42A41] p-6 rounded shadow-sm w-full text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
+            <p className="text-gray-600 mb-6">বানান সঠিক রয়েছে কিনা পুনরায় পরীক্ষা করে দেখুন।</p>
             <Link
               href="/"
-              className="inline-flex items-center justify-center px-6 py-2.5 bg-[#006A4E] text-white font-bold rounded hover:bg-[#00523b] focus:ring-4 focus:ring-[#006A4E]/30 transition-colors"
+              className="inline-flex items-center px-6 py-2.5 bg-[#006A4E] text-white font-bold rounded hover:bg-[#00523b] transition-colors"
             >
               নতুন অনুসন্ধান
             </Link>
@@ -113,11 +135,13 @@ export default function WordPage({ params }: PageProps) {
 
         {!isLoading && !error && data && (
           <article className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden w-full">
-            <div className="p-6 md:p-10">
+            <div className="p-6 md:p-10 w-full overflow-hidden">
               
-              <div className="flex flex-wrap items-center gap-4 mb-6">
+              <div className="flex flex-wrap items-center gap-4 mb-6 w-full">
+                {/* NEW: Added ref, w-full, whitespace-nowrap, and overflow-hidden to bound the scaling */}
                 <h1 
-                  className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight"
+                  ref={wordTitleRef}
+                  className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight w-full whitespace-nowrap overflow-hidden transition-all duration-200"
                   dangerouslySetInnerHTML={{ __html: data.word }}
                 ></h1>
                 
@@ -126,7 +150,7 @@ export default function WordPage({ params }: PageProps) {
                     data.category.map((cat, idx) => (
                       <span
                         key={idx}
-                        className="px-3 py-1 bg-[#F42A41]/10 dark:bg-[#F42A41]/20 text-[#F42A41] dark:text-[#ff4d60] text-sm font-bold rounded-full border border-[#F42A41]/20"
+                        className="px-3 py-1 bg-[#F42A41]/10 text-[#F42A41] text-sm font-bold rounded-full border border-[#F42A41]/20"
                         dangerouslySetInnerHTML={{ __html: cat }}
                       ></span>
                     ))
@@ -136,14 +160,14 @@ export default function WordPage({ params }: PageProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5 border-y border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 -mx-6 md:-mx-10 px-6 md:px-10 mb-8 items-center">
                 <div>
-                  <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">উচ্চারণ</span>
+                  <span className="text-sm font-bold text-gray-400 uppercase tracking-wider block mb-1">উচ্চারণ</span>
                   <span 
                     className="text-lg font-medium text-gray-900 dark:text-white"
                     dangerouslySetInnerHTML={{ __html: data.pronunciation || "—" }}
                   ></span>
                 </div>
                 <div>
-                  <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">বুৎপত্তি</span>
+                  <span className="text-sm font-bold text-gray-400 uppercase tracking-wider block mb-1">বুৎপত্তি</span>
                   <span 
                     className="text-lg font-medium text-gray-900 dark:text-white"
                     dangerouslySetInnerHTML={{ __html: data.root || "—" }}
@@ -151,8 +175,8 @@ export default function WordPage({ params }: PageProps) {
                 </div>
               </div>
 
-              <section aria-labelledby="meaning-heading">
-                <h2 id="meaning-heading" className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-3">
+              <section>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[#006A4E] dark:text-[#42a88a] mb-3">
                   অর্থ ও প্রয়োগ
                 </h2>
                 <div 

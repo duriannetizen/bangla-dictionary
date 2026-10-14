@@ -22,11 +22,10 @@ interface TrendingWord {
 }
 
 const KEYBOARD_OPTIONS: { id: KeyboardMode; label: string }[] = [
-  { id: "unicode", label: "ইউনিকোড" },
-  { id: "avro", label: "অভ্র ফনেটিক" }
+  { id: "unicode", label: "বাংলায় টাইপ" },
+  { id: "avro", label: "ইংরেজি (অভ্র) টাইপ" }
 ];
 
-// Helper for timing the animation
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function HomePage() {
@@ -40,8 +39,10 @@ export default function HomePage() {
   
   const [wordOfDay, setWordOfDay] = useState<WordOfDay | null>(null);
   const [trendingWords, setTrendingWords] = useState<TrendingWord[]>([]);
+  const [isDataLoaded, setIsDataLoaded] = useState(false); // NEW: Tracks if page is fully loaded
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const wotdRef = useRef<HTMLHeadingElement>(null); // NEW: Ref for Word of the Day scaling
 
   // --- TUTORIAL STATE ---
   const [isTutorialActive, setIsTutorialActive] = useState(false);
@@ -51,7 +52,7 @@ export default function HomePage() {
   const [showPointer, setShowPointer] = useState(false);
   const tutorialCancelled = useRef(false);
 
-  // Fetch Random Words & Initialize Cache
+  // Fetch Data
   useEffect(() => {
     const storedKeyboard = sessionStorage.getItem("dictionaryKeyboardMode") as KeyboardMode | null;
     if (storedKeyboard && (storedKeyboard === "unicode" || storedKeyboard === "avro")) {
@@ -64,6 +65,7 @@ export default function HomePage() {
         const parsed = JSON.parse(cachedData);
         if (parsed.wordOfDay) setWordOfDay(parsed.wordOfDay);
         if (parsed.trending) setTrendingWords(parsed.trending);
+        setIsDataLoaded(true);
         return; 
       } catch (e) {
         console.error("Cache parsing error", e);
@@ -76,12 +78,43 @@ export default function HomePage() {
         if (data.wordOfDay) setWordOfDay(data.wordOfDay);
         if (data.trending) setTrendingWords(data.trending);
         sessionStorage.setItem("dictionaryHomeData", JSON.stringify(data));
+        setIsDataLoaded(true);
       })
-      .catch(err => console.error("Failed to load random words", err));
+      .catch(err => {
+        console.error("Failed to load random words", err);
+        setIsDataLoaded(true); // Still unlock tutorial if fetch fails
+      });
   }, []);
 
-  // Tutorial Sequence Logic
+  // Auto-Scale Font Size for Long Words
   useEffect(() => {
+    const adjustFontSize = () => {
+      const el = wotdRef.current;
+      if (!el) return;
+      
+      el.style.fontSize = ""; // Reset to default CSS size
+      
+      requestAnimationFrame(() => {
+        let currentFontSize = parseFloat(window.getComputedStyle(el).fontSize);
+        // Shrink font size if the word's scroll width exceeds the container width
+        while (el.scrollWidth > el.clientWidth && currentFontSize > 16) {
+          currentFontSize -= 1;
+          el.style.fontSize = `${currentFontSize}px`;
+        }
+      });
+    };
+
+    if (wordOfDay) {
+      adjustFontSize();
+      window.addEventListener("resize", adjustFontSize);
+      return () => window.removeEventListener("resize", adjustFontSize);
+    }
+  }, [wordOfDay]);
+
+  // Tutorial Sequence Logic (Now waits for isDataLoaded)
+  useEffect(() => {
+    if (!isDataLoaded) return; // Do not start until data is fully visible
+
     const hasSeenTutorial = sessionStorage.getItem("dictionaryTutorialDone");
     if (hasSeenTutorial) return;
 
@@ -92,52 +125,45 @@ export default function HomePage() {
       for (let i = 0; i <= text.length; i++) {
         if (tutorialCancelled.current) return;
         setTutorialInput(text.slice(0, i));
-        await sleep(150); // Average typing speed
+        await sleep(150);
       }
     };
 
     const runTutorial = async () => {
-      await sleep(1000); // Initial pause
+      await sleep(1000); 
 
       for (let loop = 0; loop < 3; loop++) {
         if (tutorialCancelled.current) break;
 
-        // Step 1: Type Bengali word
         setTutorialKeyboard("unicode");
         await typeText("কলম");
         if (tutorialCancelled.current) break;
         
-        // Show result panel for 3 seconds
         setShowTutorialDropdown(true);
         await sleep(3000);
         if (tutorialCancelled.current) break;
         
-        // Clear
         setShowTutorialDropdown(false);
         setTutorialInput("");
         await sleep(500);
         if (tutorialCancelled.current) break;
 
-        // Step 2: Animate Pointer to Avro
         setShowPointer(true);
-        await sleep(1200); // Wait for pointer CSS animation to visually "click"
+        await sleep(1200); 
         if (tutorialCancelled.current) break;
         
-        setTutorialKeyboard("avro"); // Button changes state
+        setTutorialKeyboard("avro");
         setShowPointer(false);
         await sleep(800);
         if (tutorialCancelled.current) break;
 
-        // Step 3: Type English word
         await typeText("kolom");
         if (tutorialCancelled.current) break;
         
-        // Show result panel for 3 seconds
         setShowTutorialDropdown(true);
         await sleep(3000);
         if (tutorialCancelled.current) break;
         
-        // Clear for next loop
         setShowTutorialDropdown(false);
         setTutorialInput("");
         await sleep(1000);
@@ -149,9 +175,8 @@ export default function HomePage() {
     };
 
     runTutorial();
-
     return () => { tutorialCancelled.current = true; };
-  }, []);
+  }, [isDataLoaded]); // Dependency ensures this triggers after data loads
 
   const endTutorial = () => {
     tutorialCancelled.current = true;
@@ -163,7 +188,6 @@ export default function HomePage() {
     setTutorialKeyboard("unicode");
   };
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -174,9 +198,8 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Real Search Logic
   useEffect(() => {
-    if (isTutorialActive) return; // Disable real search during tutorial
+    if (isTutorialActive) return;
 
     const converted = convertInput(rawInput, keyboardMode);
     setQuery(converted);
@@ -222,14 +245,12 @@ export default function HomePage() {
     sessionStorage.setItem("dictionaryKeyboardMode", mode); 
   };
 
-  // Active state determines whether UI reads from real user input or tutorial state
   const activeKeyboard = isTutorialActive ? tutorialKeyboard : keyboardMode;
   const activeInput = isTutorialActive ? tutorialInput : rawInput;
   const activePlaceholder = activeKeyboard === "avro" ? "এখানে ইংরেজি বানানে টাইপ করুন..." : "শব্দ অনুসন্ধান করুন...";
 
   return (
     <main 
-      // Capture ANY interaction on the page to instantly kill the tutorial
       onClickCapture={isTutorialActive ? endTutorial : undefined}
       onKeyDownCapture={isTutorialActive ? endTutorial : undefined}
       onTouchStartCapture={isTutorialActive ? endTutorial : undefined}
@@ -242,7 +263,6 @@ export default function HomePage() {
       </header>
 
       <section ref={searchContainerRef} className="w-full max-w-2xl relative mb-12" aria-label="Search section">
-        
         <fieldset className="flex items-center justify-center gap-2 mb-4 text-sm">
           <legend className="sr-only">কীবোর্ড নির্বাচন করুন</legend>
           <span className="text-gray-600 dark:text-gray-300 font-medium mr-2">কীবোর্ড:</span>
@@ -262,8 +282,6 @@ export default function HomePage() {
               >
                 {mode.label}
               </button>
-
-              {/* Animated Pointer for the Tutorial */}
               {isTutorialActive && showPointer && mode.id === "avro" && (
                 <div className="absolute top-8 left-1/2 -translate-x-1/2 text-4xl animate-bounce pointer-events-none z-50 transition-all duration-500 text-gray-800 drop-shadow-lg">
                   👆
@@ -290,28 +308,23 @@ export default function HomePage() {
               }}
               readOnly={isTutorialActive}
               placeholder={activePlaceholder}
-              aria-label="Search for a Bengali word"
               className="w-full text-lg md:text-xl text-gray-900 dark:text-white bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
             />
             {!isTutorialActive && isLoading && (
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#006A4E] border-t-transparent ml-2 shrink-0" role="status" aria-label="Loading"></div>
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#006A4E] border-t-transparent ml-2 shrink-0"></div>
             )}
           </div>
         </div>
 
-        {/* Faux Tutorial Dropdown OR Real Dropdown */}
         {(isTutorialActive ? showTutorialDropdown : isDropdownOpen) && (
-          <ul className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50 max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700" role="listbox">
-            
+          <ul className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50 max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
             {isTutorialActive ? (
-              // Faux Dropdown for Tutorial
               <li role="option" aria-selected="false">
                 <div className="w-full text-left px-6 py-4 bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
                   <span className="text-xl font-bold text-[#F42A41]">কলম</span>
                 </div>
               </li>
             ) : (
-              // Real Dropdown
               results.length > 0 ? (
                 results.map((item, index) => (
                   <li key={index} role="option" aria-selected="false">
@@ -320,7 +333,7 @@ export default function HomePage() {
                       className="w-full text-left px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 focus:bg-gray-50 dark:focus:bg-gray-700 focus:outline-none transition-colors flex items-center justify-between group"
                     >
                       <span 
-                        className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-[#F42A41] dark:group-hover:text-[#F42A41] transition-colors"
+                        className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-[#F42A41] transition-colors"
                         dangerouslySetInnerHTML={{ __html: item.word }}
                       ></span>
                       {item.category && item.category.length > 0 && (
@@ -341,14 +354,18 @@ export default function HomePage() {
       </section>
 
       <section className="w-full grid grid-cols-1 md:grid-cols-2 gap-6" aria-label="Featured content">
-        <article className="bg-[#006A4E] text-white rounded-2xl p-6 md:p-8 shadow-lg flex flex-col justify-between border border-[#00523b] h-full">
-          <div>
+        <article className="bg-[#006A4E] text-white rounded-2xl p-6 md:p-8 shadow-lg flex flex-col justify-between border border-[#00523b] h-full overflow-hidden">
+          <div className="w-full">
             <div className="inline-block bg-[#F42A41] text-white text-xs font-bold px-3 py-1.5 rounded-full mb-5 uppercase tracking-wide">
               আলোচিত শব্দ
             </div>
             {wordOfDay ? (
               <>
-                <h2 className="text-3xl md:text-4xl font-bold mb-2" dangerouslySetInnerHTML={{ __html: wordOfDay.word }}></h2>
+                <h2 
+                  ref={wotdRef}
+                  className="text-3xl md:text-4xl font-bold mb-2 w-full whitespace-nowrap overflow-hidden transition-all duration-200" 
+                  dangerouslySetInnerHTML={{ __html: wordOfDay.word }}
+                ></h2>
                 {wordOfDay.pronunciation && (
                   <p className="text-emerald-100 text-sm md:text-base mb-4 opacity-90">
                     উচ্চারণ: <span dangerouslySetInnerHTML={{ __html: wordOfDay.pronunciation }}></span>
@@ -374,7 +391,7 @@ export default function HomePage() {
                 className="inline-flex items-center text-sm font-bold text-white hover:text-[#F42A41] focus:outline-none focus:ring-2 focus:ring-[#F42A41] rounded-sm group transition-colors"
               >
                 বিস্তারিত দেখুন
-                <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </Link>
@@ -382,6 +399,7 @@ export default function HomePage() {
           </div>
         </article>
 
+        {/* Trending Words Card (Unchanged for brevity) */}
         <article className="bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-2xl p-6 md:p-8 shadow-lg flex flex-col justify-between h-full">
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -395,8 +413,7 @@ export default function HomePage() {
                   <Link
                     key={idx}
                     href={`/word/${encodeURIComponent(item.word)}`}
-                    className="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-[#F42A41] dark:hover:bg-[#F42A41] hover:text-white dark:hover:text-white text-gray-700 dark:text-gray-200 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#006A4E]"
-                    role="listitem"
+                    className="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-[#F42A41] hover:text-white dark:text-gray-200 rounded-full text-sm font-medium transition-colors"
                   >
                     <span dangerouslySetInnerHTML={{ __html: item.word }}></span>
                   </Link>
