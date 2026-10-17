@@ -22,8 +22,8 @@ interface TrendingWord {
 }
 
 const KEYBOARD_OPTIONS: { id: KeyboardMode; label: string }[] = [
-  { id: "unicode", label: "বাংলায় টাইপ" },
-  { id: "avro", label: "ইংরেজি (অভ্র) টাইপ" }
+  { id: "unicode", label: "বাংলা" },
+  { id: "avro", label: "ইংরেজি" }
 ];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
