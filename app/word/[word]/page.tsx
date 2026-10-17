@@ -26,7 +26,7 @@ export default function WordPage({ params }: PageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const wordTitleRef = useRef<HTMLHeadingElement>(null); // NEW: Ref for auto-scaling text
+  const wordTitleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     async function fetchWordDetails() {
@@ -50,17 +50,23 @@ export default function WordPage({ params }: PageProps) {
     fetchWordDetails();
   }, [decodedWord]);
 
-  // Auto-Scale Font Size for Long Words
+  // Smarter Auto-Scale Font Size
   useEffect(() => {
     const adjustFontSize = () => {
       const el = wordTitleRef.current;
-      if (!el) return;
+      if (!el || !data) return;
       
       el.style.fontSize = ""; // Reset to CSS default first
       
       requestAnimationFrame(() => {
         let currentFontSize = parseFloat(window.getComputedStyle(el).fontSize);
-        while (el.scrollWidth > el.clientWidth && currentFontSize > 28) {
+        
+        // If it's a single word, allow it to shrink to 28px (still bigger than 24px meaning text) to fit on one line.
+        // If it's a multi-word phrase, keep the minimum at 36px and let it wrap.
+        const isSingleWord = !data.word.trim().includes(' ');
+        const minFontSize = isSingleWord ? 28 : 36;
+        
+        while (el.scrollWidth > el.clientWidth && currentFontSize > minFontSize) {
           currentFontSize -= 1;
           el.style.fontSize = `${currentFontSize}px`;
         }
@@ -68,7 +74,8 @@ export default function WordPage({ params }: PageProps) {
     };
 
     if (data) {
-      adjustFontSize();
+      // Small timeout ensures custom fonts are fully painted before calculating width
+      setTimeout(adjustFontSize, 50);
       window.addEventListener("resize", adjustFontSize);
       return () => window.removeEventListener("resize", adjustFontSize);
     }
@@ -138,10 +145,12 @@ export default function WordPage({ params }: PageProps) {
             <div className="p-6 md:p-10 w-full overflow-hidden">
               
               <div className="flex flex-wrap items-center gap-4 mb-6 w-full">
-                {/* NEW: Added ref, w-full, whitespace-nowrap, and overflow-hidden to bound the scaling */}
+                {/* Dynamically apply whitespace-nowrap for single words and safe line-height for wrapped words */}
                 <h1 
                   ref={wordTitleRef}
-                  className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight w-full break-words py-2 transition-all duration-200"
+                  className={`text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight w-full py-2 transition-all duration-200 leading-normal ${
+                    !data.word.trim().includes(' ') ? 'whitespace-nowrap' : 'break-words'
+                  }`}
                   dangerouslySetInnerHTML={{ __html: data.word }}
                 ></h1>
                 
