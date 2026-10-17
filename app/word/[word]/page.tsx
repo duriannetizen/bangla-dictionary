@@ -60,7 +60,7 @@ export default function WordPage({ params }: PageProps) {
       
       requestAnimationFrame(() => {
         let currentFontSize = parseFloat(window.getComputedStyle(el).fontSize);
-        while (el.scrollWidth > el.clientWidth && currentFontSize > 16) {
+        while (el.scrollWidth > el.clientWidth && currentFontSize > 36) {
           currentFontSize -= 1;
           el.style.fontSize = `${currentFontSize}px`;
         }
@@ -141,7 +141,7 @@ export default function WordPage({ params }: PageProps) {
                 {/* NEW: Added ref, w-full, whitespace-nowrap, and overflow-hidden to bound the scaling */}
                 <h1 
                   ref={wordTitleRef}
-                  className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight w-full whitespace-nowrap overflow-hidden transition-all duration-200"
+                  className="text-5xl md:text-7xl font-extrabold text-[#006A4E] dark:text-[#42a88a] tracking-tight w-full break-words py-2 transition-all duration-200"
                   dangerouslySetInnerHTML={{ __html: data.word }}
                 ></h1>
                 

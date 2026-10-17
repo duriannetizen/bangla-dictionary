@@ -97,7 +97,7 @@ export default function HomePage() {
       requestAnimationFrame(() => {
         let currentFontSize = parseFloat(window.getComputedStyle(el).fontSize);
         // Shrink font size if the word's scroll width exceeds the container width
-        while (el.scrollWidth > el.clientWidth && currentFontSize > 16) {
+        while (el.scrollWidth > el.clientWidth && currentFontSize > 28) {
           currentFontSize -= 1;
           el.style.fontSize = `${currentFontSize}px`;
         }
@@ -363,7 +363,7 @@ export default function HomePage() {
               <>
                 <h2 
                   ref={wotdRef}
-                  className="text-3xl md:text-4xl font-bold mb-2 w-full whitespace-nowrap overflow-hidden transition-all duration-200" 
+                  className="text-3xl md:text-4xl font-bold mb-2 w-full break-words py-1 transition-all duration-200" 
                   dangerouslySetInnerHTML={{ __html: wordOfDay.word }}
                 ></h2>
                 {wordOfDay.pronunciation && (
