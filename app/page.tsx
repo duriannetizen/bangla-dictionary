@@ -247,7 +247,7 @@ export default function HomePage() {
 
   const activeKeyboard = isTutorialActive ? tutorialKeyboard : keyboardMode;
   const activeInput = isTutorialActive ? tutorialInput : rawInput;
-  const activePlaceholder = activeKeyboard === "avro" ? "এখানে ইংরেজি বানানে টাইপ করুন..." : "শব্দ অনুসন্ধান করুন...";
+  const activePlaceholder = activeKeyboard === "avro" ? "ইংরেজি বানানে টাইপ করুন..." : "শব্দ অনুসন্ধান করুন...";
 
   return (
     <main 
