@@ -60,7 +60,7 @@ export default function WordPage({ params }: PageProps) {
       
       requestAnimationFrame(() => {
         let currentFontSize = parseFloat(window.getComputedStyle(el).fontSize);
-        while (el.scrollWidth > el.clientWidth && currentFontSize > 36) {
+        while (el.scrollWidth > el.clientWidth && currentFontSize > 28) {
           currentFontSize -= 1;
           el.style.fontSize = `${currentFontSize}px`;
         }
