@@ -7,13 +7,13 @@ env.allowLocalModels = false;
 
 // Singleton pattern ensures the AI model loads only once per server instance, saving memory
 class PipelineSingleton {
-  static task = 'feature-extraction';
   static model = 'Xenova/multilingual-e5-small';
   static instance: any = null;
 
   static async getInstance() {
     if (this.instance === null) {
-      this.instance = pipeline(this.task, this.model);
+      // Passing the literal string 'feature-extraction' satisfies TypeScript
+      this.instance = pipeline('feature-extraction', this.model);
     }
     return this.instance;
   }
