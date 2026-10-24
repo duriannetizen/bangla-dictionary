@@ -48,4 +48,4 @@ requirements.txt
 translate_dictionary_decrepated.py
 translate_dictionary_batch.py
 json-to-sqlite-v4.py
-*.db
+bangla-obhidhan.db
