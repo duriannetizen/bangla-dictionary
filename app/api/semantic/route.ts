@@ -5,6 +5,9 @@ import { pipeline, env } from '@xenova/transformers';
 // Prevents the library from looking for local model files during Vercel deployment
 env.allowLocalModels = false;
 
+// NEW: Tells the AI to cache the model in Vercel's writable temporary folder
+env.cacheDir = '/tmp';
+
 // Singleton pattern ensures the AI model loads only once per server instance, saving memory
 class PipelineSingleton {
   static model = 'Xenova/multilingual-e5-small';
