@@ -1,8 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   serverExternalPackages: ['sharp', 'onnxruntime-node'],
+  experimental: {
+    outputFileTracingIncludes: {
+      // This tells Vercel to forcefully bundle the missing C++ files with your API route
+      '/api/**/*': ['./node_modules/onnxruntime-node/bin/**/*'],
+    },
+  },
 };
 
 export default nextConfig;
