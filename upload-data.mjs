@@ -19,7 +19,7 @@ async function uploadData() {
     // ==========================================
     console.log("--- Syncing 'dictionary' table ---");
     
-    // We MUST create and sync this table first because eng_trans depends on it
+    // 1. Create table (for new setups)
     await tursoDb.execute(`
       CREATE TABLE IF NOT EXISTS dictionary (
         reference TEXT PRIMARY KEY,
@@ -27,26 +27,39 @@ async function uploadData() {
         pronunciation TEXT,
         root TEXT,
         category TEXT,
-        meaning TEXT
+        meaning TEXT,
+        embedding F32_BLOB(384)
       )
     `);
 
+    // 2. Safely alter existing table to add the embedding column
+    const tableInfo = await tursoDb.execute("PRAGMA table_info(dictionary)");
+    const hasEmbedding = tableInfo.rows.some(col => col.name === "embedding");
+
+    if (!hasEmbedding) {
+      console.log("⚙️ Altering existing 'dictionary' table to add 'embedding' column...");
+      await tursoDb.execute("ALTER TABLE dictionary ADD COLUMN embedding F32_BLOB(384)");
+      console.log("✅ Column added successfully.");
+    }
+
+    // Load local rows into memory once to use for both inserts and updates
+    const localDictRows = localDb.prepare('SELECT * FROM dictionary').all();
+
+    // 3. Handle NEW words
     const tursoDictResult = await tursoDb.execute('SELECT reference FROM dictionary');
     const existingDictRefs = new Set(tursoDictResult.rows.map(row => row.reference));
-
-    const localDictRows = localDb.prepare('SELECT * FROM dictionary').all();
     const dictRowsToUpload = localDictRows.filter(row => !existingDictRefs.has(row.reference));
 
     if (dictRowsToUpload.length === 0) {
-      console.log("✅ 'dictionary' table is already up to date.");
+      console.log("✅ No completely new words to add to 'dictionary'.");
     } else {
       console.log(`Uploading ${dictRowsToUpload.length} new words to 'dictionary'...`);
       let dictCount = 0;
       for (const row of dictRowsToUpload) {
         try {
           await tursoDb.execute({
-            sql: `INSERT INTO dictionary (reference, word, pronunciation, root, category, meaning) VALUES (?, ?, ?, ?, ?, ?)`,
-            args: [row.reference, row.word, row.pronunciation, row.root, row.category, row.meaning]
+            sql: `INSERT INTO dictionary (reference, word, pronunciation, root, category, meaning, embedding) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            args: [row.reference, row.word, row.pronunciation, row.root, row.category, row.meaning, row.embedding || null]
           });
           dictCount++;
           if (dictCount % 100 === 0) console.log(`Uploaded ${dictCount} of ${dictRowsToUpload.length}...`);
@@ -55,6 +68,36 @@ async function uploadData() {
         }
       }
       console.log(`✅ Finished uploading ${dictCount} new words to 'dictionary'.`);
+    }
+
+    // 4. Handle EXISTING words that are missing their new embeddings
+    console.log("--- Checking for missing embeddings in existing words ---");
+    const missingEmbeddingsResult = await tursoDb.execute('SELECT reference FROM dictionary WHERE embedding IS NULL');
+    const refsNeedingEmbeddings = missingEmbeddingsResult.rows.map(row => row.reference);
+
+    if (refsNeedingEmbeddings.length === 0) {
+      console.log("✅ All existing words already have their embeddings.");
+    } else {
+      console.log(`Pushing embeddings for ${refsNeedingEmbeddings.length} existing words...`);
+      let updateCount = 0;
+      
+      for (const ref of refsNeedingEmbeddings) {
+        const localRow = localDictRows.find(row => row.reference === ref);
+        
+        if (localRow && localRow.embedding) {
+          try {
+            await tursoDb.execute({
+              sql: `UPDATE dictionary SET embedding = ? WHERE reference = ?`,
+              args: [localRow.embedding, ref]
+            });
+            updateCount++;
+            if (updateCount % 100 === 0) console.log(`Updated ${updateCount} of ${refsNeedingEmbeddings.length}...`);
+          } catch (error) {
+            console.error(`Error updating embedding for reference '${ref}':`, error.message);
+          }
+        }
+      }
+      console.log(`✅ Finished updating ${updateCount} word embeddings.`);
     }
 
     // ==========================================
@@ -68,10 +111,22 @@ async function uploadData() {
         reference TEXT PRIMARY KEY,
         english_word TEXT NOT NULL,
         usage_sentence TEXT NOT NULL,
+        part_of_speech TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (reference) REFERENCES dictionary(reference)
       )
     `);
+
+    // Check if part_of_speech column exists in Turso (for existing tables)
+    const engTableInfo = await tursoDb.execute("PRAGMA table_info(eng_trans)");
+    const hasPartOfSpeech = engTableInfo.rows.some(col => col.name === "part_of_speech");
+
+    // If it doesn't exist, safely alter the table to add it
+    if (!hasPartOfSpeech) {
+      console.log("⚙️ Altering existing 'eng_trans' table to add 'part_of_speech' column...");
+      await tursoDb.execute("ALTER TABLE eng_trans ADD COLUMN part_of_speech TEXT");
+      console.log("✅ Column added successfully.");
+    }
 
     // Fetch existing references to avoid duplicates
     const tursoEngResult = await tursoDb.execute('SELECT reference FROM eng_trans');
@@ -87,10 +142,10 @@ async function uploadData() {
       let engCount = 0;
       for (const row of engRowsToUpload) {
         try {
-          // If your local DB has a created_at value, it uses it. If not, it falls back to Turso's CURRENT_TIMESTAMP
+          // Insert data including the part_of_speech column
           await tursoDb.execute({
-            sql: `INSERT INTO eng_trans (reference, english_word, usage_sentence, created_at) VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
-            args: [row.reference, row.english_word, row.usage_sentence, row.created_at || null]
+            sql: `INSERT INTO eng_trans (reference, english_word, usage_sentence, part_of_speech, created_at) VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+            args: [row.reference, row.english_word, row.usage_sentence, row.part_of_speech, row.created_at || null]
           });
           
           engCount++;

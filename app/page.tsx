@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { convertInput, KeyboardMode } from "@/lib/bengaliConverter";
+import ApplicationMenu from "@/components/ApplicationMenu";
 
 interface SearchResult {
   word: string;
@@ -256,6 +257,7 @@ export default function HomePage() {
       onTouchStartCapture={isTutorialActive ? endTutorial : undefined}
       className="min-h-screen flex flex-col justify-center items-center px-4 py-8 max-w-5xl mx-auto w-full bg-white dark:bg-gray-900 transition-colors"
     >
+      <ApplicationMenu/>
       <header className="text-center mb-10 w-full">
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[#006A4E] dark:text-[#42a88a] mb-4">
           আধুনিক বাংলা ভাষার অভিধান
