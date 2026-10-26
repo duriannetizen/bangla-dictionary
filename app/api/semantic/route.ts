@@ -10,7 +10,7 @@ env.cacheDir = '/tmp';
 
 // Singleton pattern ensures the AI model loads only once per server instance, saving memory
 class PipelineSingleton {
-  static model = 'Xenova/multilingual-e5-small';
+  static model = 'Xenova/multilingual-e5-base';
   static instance: any = null;
 
   static async getInstance() {
