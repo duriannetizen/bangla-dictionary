@@ -31,15 +31,21 @@ export async function POST(req: Request) {
 
     // For সমার্থক শব্দ (Synonyms), we must first grab the exact meaning of the word from the DB
     if (type === 'synonym') {
+      const searchWord = text.trim();
+      
+      // Match the exact word OR any variation that has a superscript suffix (e.g., <sup>১</sup>)
       const meaningLookup = await db.execute({
-        sql: "SELECT meaning FROM dictionary WHERE word = ?",
-        args: [text]
+        sql: "SELECT meaning FROM dictionary WHERE word = ? OR word LIKE ?",
+        args: [searchWord, `${searchWord}<sup>%`]
       });
       
       if (meaningLookup.rows.length === 0) {
         return NextResponse.json({ error: "Word not found in dictionary" }, { status: 404 });
       }
-      textToEmbed = meaningLookup.rows[0].meaning;
+      
+      // If a word has multiple tagged entries (e.g., অবাক<sup>১</sup> and অবাক<sup>২</sup>),
+      // we combine their meanings together to generate a highly accurate semantic footprint.
+      textToEmbed = meaningLookup.rows.map(row => row.meaning).join(' ');
     }
 
     // Initialize AI and generate the embedding for the user's query
